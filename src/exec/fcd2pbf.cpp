@@ -198,19 +198,20 @@ protected:
 				vp.x = atof(xVehicle.getAttribute("x"));
 				vp.y = atof(xVehicle.getAttribute("y"));
 
+				if (vp.x>=0 && vp.y >=0){
+					Vector2d latlon = this->UTM2LatLon(vp.x, vp.y);
+					vp.lat = latlon[0];
+					vp.lon = latlon[1];
 
-				Vector2d latlon = this->UTM2LatLon(vp.x, vp.y);
-				vp.lat = latlon[0];
-				vp.lon = latlon[1];
+					minLat = min(minLat,latlon[0]);
+					minLon = min(minLon,latlon[1]);
+					maxLat = max(maxLat,latlon[0]);
+					maxLon = max(maxLon,latlon[1]);
 
-				minLat = min(minLat,latlon[0]);
-				minLon = min(minLon,latlon[1]);
-				maxLat = max(maxLat,latlon[0]);
-				maxLon = max(maxLon,latlon[1]);
-
-				vp.angle = atof(xVehicle.getAttribute("angle"));
-				vp.speed = atof(xVehicle.getAttribute("speed"));	
-				accumulator(vp);
+					vp.angle = atof(xVehicle.getAttribute("angle"));
+					vp.speed = atof(xVehicle.getAttribute("speed"));	
+					accumulator(vp);
+				}
 			}
 			/*if (i >= MAX_TIME_STEP){
 				break;
