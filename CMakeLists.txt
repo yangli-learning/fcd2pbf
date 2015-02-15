@@ -4,6 +4,9 @@ cmake_minimum_required (VERSION 2.6)
 # the name of the project
 project (fcd2pbf)
 
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake)
+message("cmake module path ${CMAKE_MODULE_PATH}")
+
 # Make sure testing is enabled
 ENABLE_TESTING()
 

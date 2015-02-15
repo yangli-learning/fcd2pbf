@@ -85,9 +85,17 @@ public:
 		}
 	}
 	/** 
+		convert SUMO heading angle (-180,180) to protobuf heading
+		angle (0,360)
+	 **/
+	int convertHeadingAngle(const float angle ){
+		return angle+180;
+	}
+
+	/** 
 	 * write trajectories to pbf format
 	 */
-	void writePBF(const char* filename){
+	void writePBF(const char* filename, int subsample_level=1){
 		GOOGLE_PROTOBUF_VERIFY_VERSION;
 		int fid = open(filename,O_WRONLY |O_CREAT |O_TRUNC );
 		if (fid == -1){
@@ -102,20 +110,30 @@ public:
 
 		coded_output->WriteLittleEndian32(num_trajectory);
 
+		//int minTrajLen = subsample_level *2;
+		srand(time(NULL));
+
 		for (map<string,vector<VehiclePoint> >::iterator it=trajectories.begin();
 			 it != trajectories.end(); it++){
 
 			vector<VehiclePoint> &vpts = it->second;
-
+			int random_start = rand() % subsample_level;
+			/*			if (vpts.size() < minTrajLen ){
+				continue;
+				}*/
 			GpsTraj new_traj;
 
 			for (unsigned i = 0; i < vpts.size(); ++i) {
-			   
+				// skip points to subsample trajectories
+				if ((i+random_start)% subsample_level !=0){
+					continue;
+				}
+
 				TrajPoint* new_pt = new_traj.add_point(); 
 
 				new_pt->set_car_id(i);				
 				new_pt->set_speed(round(vpts[i].speed));
-				new_pt->set_head(round(vpts[i].angle));
+				new_pt->set_head(convertHeadingAngle(vpts[i].angle));
 
 				
 				new_pt->set_lon((int32_t)round(vpts[i].lon*1e5));
@@ -132,7 +150,7 @@ public:
 		delete coded_output;
 		delete raw_output;
 		close(fid);
-		cout <<"exported pbf file to " << filename << endl;
+		cout <<"exported pbf file " << filename << endl;
 
 	}
 	
@@ -289,6 +307,12 @@ int main(int argc, char** argv){
 		reader.addNoise(noise_std);
 	reader.writePBF(pbf_fname.c_str());
 	reader.writeBoundingBox(bbox_fname.c_str());
+
+	//write several subsampled version
+	for (int s=5; s<=15;s+=5){
+		pbf_fname = string(output_name) +"_s"+std::to_string(s) + ".pbf";
+		reader.writePBF(pbf_fname.c_str(),s);
+	}
 }
 
 
