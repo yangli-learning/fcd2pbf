@@ -87,7 +87,7 @@ public:
 	/** 
 	 * write trajectories to pbf format
 	 */
-	void writePBF(const char* filename){
+	void writePBF(const char* filename, int downsample){
 		GOOGLE_PROTOBUF_VERIFY_VERSION;
 		int fid = open(filename,O_WRONLY |O_CREAT |O_TRUNC );
 		if (fid == -1){
@@ -110,7 +110,7 @@ public:
 			GpsTraj new_traj;
 
 			for (unsigned i = 0; i < vpts.size(); ++i) {
-			   
+			    if (i % downsample !=0) continue;
 				TrajPoint* new_pt = new_traj.add_point(); 
 
 				new_pt->set_car_id(i);				
@@ -259,6 +259,7 @@ void usage(){
 	cout <<"options:\n"
 		 <<"    -n <float> noise_std   standard deviation of Guassian noise in meters. default is 0\n"
 		 <<"    -u <int>   utm_zone    time zone of the fcd input file. default is 50 (Beijing)\n";
+		 
 }
 
 int main(int argc, char** argv){
@@ -278,17 +279,20 @@ int main(int argc, char** argv){
 	if (Util::CmdOptionExists(argv,argv+argc,"-u")){
 		utm_zone = atof(Util::GetCmdOption(argv,argv+argc,"-u"));
 	}
-
+    int downsample = 1;
+    if (Util::CmdOptionExists(argv, argv+argc,"-s")){
+        downsample = atoi(Util::GetCmdOption(argv,argv+argc,"-s"));
+    }
 
 	cout <<"Parsing "<< input_name << "..."<< endl;
-	
+	cout <<"Nose stdev: " << noise_std<<" Sample interval: " << downsample<< endl;
 	FCDReader reader(input_name,utm_zone);
 	
 	string pbf_fname = string(output_name) + ".pbf";
 	string bbox_fname = string(output_name)+".bbox";
 	if (noise_std >0)
 		reader.addNoise(noise_std);
-	reader.writePBF(pbf_fname.c_str());
+	reader.writePBF(pbf_fname.c_str(),downsample);
 	reader.writeBoundingBox(bbox_fname.c_str());
 }
 
