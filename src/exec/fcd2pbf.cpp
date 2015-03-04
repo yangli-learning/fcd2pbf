@@ -115,7 +115,7 @@ public:
 
 				new_pt->set_car_id(i);				
 				new_pt->set_speed(round(vpts[i].speed));
-				new_pt->set_head(round(vpts[i].angle));
+				new_pt->set_head(-round(vpts[i].angle) +180);
 
 				
 				new_pt->set_lon((int32_t)round(vpts[i].lon*1e5));
@@ -242,7 +242,6 @@ protected:
 	 * y: northing
 	 */
 	Vector2d UTM2LatLon(const double  &x, const double &y){
-	 
 		bool north = true; // northern hemisphere
 		GeoCoords c( utm_zone,north,x,y);
 		
@@ -263,12 +262,10 @@ void usage(){
 }
 
 int main(int argc, char** argv){
-
 	if (argc < 3){
 		usage();
 		return 0;
-	}
-	
+	}	
 	char* output_name =  Util::GetCmdOption(argv,argv+argc,"-o");
 	char* input_name = Util::GetCmdOption(argv,argv+argc,"-i");
 	double noise_std = 0;
