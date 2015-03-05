@@ -108,9 +108,9 @@ public:
 			vector<VehiclePoint> &vpts = it->second;
 
 			GpsTraj new_traj;
-
+			int randomStart = random()%downsample;//start between 0, downsample-1
 			for (unsigned i = 0; i < vpts.size(); ++i) {
-			    if (i % downsample !=0) continue;
+			    if ((i+randomStart) % downsample !=0) continue;
 				TrajPoint* new_pt = new_traj.add_point(); 
 
 				new_pt->set_car_id(i);				
@@ -253,11 +253,12 @@ protected:
 };
 
 void usage(){
-    cout <<"Usage: fcd2pbf -i fcd_file -o output_basename [-n noise_std] [-u utm_zone] \n";
+    cout <<"Usage: fcd2pbf -i fcd_file -o output_basename [-n noise_std] [-u utm_zone] [-s downsample]\n";
 	cout <<"    output will be written to <output_basename>.pbf and <output_basename>.bbox\n";
 	cout <<"options:\n"
 		 <<"    -n <float> noise_std   standard deviation of Guassian noise in meters. default is 0\n"
-		 <<"    -u <int>   utm_zone    time zone of the fcd input file. default is 50 (Beijing)\n";
+		 <<"    -u <int>   utm_zone    time zone of the fcd input file. default is 50 (Beijing)\n"
+		 <<"    -s <int>   downsample  down-sample interval";
 		 
 }
 
