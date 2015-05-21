@@ -36,6 +36,8 @@ struct VehiclePoint{
 	float y;
 	float angle;
 	float speed;
+	string lane;
+	bool keep;
 };
 
 /** 
@@ -84,16 +86,47 @@ public:
 			}
 		}
 	}
-	/** 
-	 * write trajectories to pbf format
+	/** downsample trajectories **/
+	void downSample(int level){
+
+		for (map<string,vector<VehiclePoint> >::iterator it=trajectories.begin();
+			 it != trajectories.end(); it++){ 
+
+			vector<VehiclePoint> &vpts = it->second;
+			int randomStart = random()%level;//start between 0, downsample-1
+			for (unsigned i = 0; i < vpts.size(); ++i) {
+			    if ((i+randomStart) % level !=0) {
+			    	vpts[i].keep = false;
+			    	 
+			    }else{
+			    	vpts[i].keep = true;
+			    }
+			}
+		}
+	}
+	/**
+	 * get integer flow number from car id string "flow.repeatNo"
+	 * flow is based from 1
+	 * @deprecated 
 	 */
-	void writePBF(const char* filename, int downsample){
+	int parseFlowId(const string &carId){
+	
+		size_t dot = carId.find(".");
+		return stoi(carId.substr(0,dot));
+	}
+
+	/**
+	 * write trajectories to pbf format
+	 * @deprecated!
+	 */
+	void writePBF2(const char* pbfname, const char* lanename, int downsample){
 		GOOGLE_PROTOBUF_VERIFY_VERSION;
-		int fid = open(filename,O_WRONLY |O_CREAT |O_TRUNC );
+		int fid = open(pbfname,O_WRONLY |O_CREAT |O_TRUNC );
 		if (fid == -1){
 			fprintf(stderr,"Error: cannot create protobuf file. \n");
 			return;
 		}
+		ofstream lane_file(lanename,ofstream::out);
 		google::protobuf::io::ZeroCopyOutputStream *raw_output 
 			= new google::protobuf::io::FileOutputStream(fid);
 		google::protobuf::io::CodedOutputStream *coded_output 
@@ -101,39 +134,112 @@ public:
 		uint32_t num_trajectory = trajectories.size();
 
 		coded_output->WriteLittleEndian32(num_trajectory);
-
+		int globalId = 0;
 		for (map<string,vector<VehiclePoint> >::iterator it=trajectories.begin();
 			 it != trajectories.end(); it++){
+			//int32_t global_id = (int32_t)string(it->first);
+
+			lane_file <<  globalId << " " << it->first <<" ";
 
 			vector<VehiclePoint> &vpts = it->second;
-
 			GpsTraj new_traj;
 			int randomStart = random()%downsample;//start between 0, downsample-1
 			for (unsigned i = 0; i < vpts.size(); ++i) {
 			    if ((i+randomStart) % downsample !=0) continue;
 				TrajPoint* new_pt = new_traj.add_point(); 
 
-				new_pt->set_car_id(i);				
-				new_pt->set_speed(round(vpts[i].speed));
-				new_pt->set_head(-round(vpts[i].angle) +180);
-
-				
+				new_pt->set_car_id(i);			
+				new_pt->set_speed(round(vpts[i].speed)*100);// speed unit is cm/sec
+				new_pt->set_head(-round(vpts[i].angle) +180);//clockwise from north
 				new_pt->set_lon((int32_t)round(vpts[i].lon*1e5));
 				new_pt->set_lat((int32_t)round(vpts[i].lat*1e5));
 				new_pt->set_x(vpts[i].x);
-				new_pt->set_y(vpts[i].y);
+				new_pt->set_y(vpts[i].y);		 
 				new_pt->set_timestamp((uint32_t)vpts[i].time);
+				
+				lane_file << vpts[i].lane<<" ";
 			}
 			string s;
 			new_traj.SerializeToString(&s);
 			coded_output->WriteLittleEndian32(s.size());
 			coded_output->WriteString(s);
+
+			lane_file <<"\n";
+			globalId++;
 		}
 		delete coded_output;
 		delete raw_output;
 		close(fid);
-		cout <<"exported pbf file to " << filename << endl;
+		lane_file.close();
+		cout <<"exported pbf file to " << pbfname  << endl;
+		cout <<"exported lane file to " << lanename << endl;
+	}
+	/**
+	 * write trajectory point - lane matching to txt file
+	 */
+	 void writeLane(const char* lanename){
+		ofstream lane_file(lanename,ofstream::out);
+		//uint32_t num_trajectory = trajectories.size();
+		int globalId = 0;
+		for (map<string,vector<VehiclePoint> >::iterator it=trajectories.begin();
+			 it != trajectories.end(); it++){
+			vector<VehiclePoint> &vpts = it->second;
+			lane_file <<  globalId << " " << it->first <<" ";
+			for (unsigned i = 0; i < vpts.size(); ++i) {
+				if (vpts[i].keep){
+					lane_file << vpts[i].lane<<" ";
+				}
+			}
+			lane_file <<"\n";
+			globalId++;
+		}
+		lane_file.close();
+		cout <<"exported lane file to " << lanename << endl;
+	 }
+	/** 
+	 * write trajectories to pbf format
+	 */
+	void writePBF(const char* pbfname ){
+		GOOGLE_PROTOBUF_VERIFY_VERSION;
+		int fid = open(pbfname,O_WRONLY |O_CREAT |O_TRUNC );
+		if (fid == -1){
+			fprintf(stderr,"Error: cannot create protobuf file. \n");
+			return;
+		} 
+		google::protobuf::io::ZeroCopyOutputStream *raw_output 
+			= new google::protobuf::io::FileOutputStream(fid);
+		google::protobuf::io::CodedOutputStream *coded_output 
+			= new google::protobuf::io::CodedOutputStream(raw_output);
+		uint32_t num_trajectory = trajectories.size();
 
+		coded_output->WriteLittleEndian32(num_trajectory);
+	 
+		for (map<string,vector<VehiclePoint> >::iterator it=trajectories.begin();
+			 it != trajectories.end(); it++){ 
+			vector<VehiclePoint> &vpts = it->second;
+			GpsTraj new_traj;
+ 			for (unsigned i = 0; i < vpts.size(); ++i) {
+ 				if ( vpts[i].keep ){ 	   
+					TrajPoint* new_pt = new_traj.add_point(); 
+					new_pt->set_car_id(i);			
+					new_pt->set_speed(round(vpts[i].speed *100));// speed unit is cm/sec
+					new_pt->set_head(-round(vpts[i].angle) +180);//clockwise from north
+					new_pt->set_lon((int32_t)round(vpts[i].lon*1e5));
+					new_pt->set_lat((int32_t)round(vpts[i].lat*1e5));
+					new_pt->set_x(vpts[i].x);
+					new_pt->set_y(vpts[i].y);		 
+					new_pt->set_timestamp((uint32_t)vpts[i].time); 
+				}
+			}
+			string s;
+			new_traj.SerializeToString(&s);
+			coded_output->WriteLittleEndian32(s.size());
+			coded_output->WriteString(s); 
+		}
+		delete coded_output;
+		delete raw_output;
+		close(fid); 
+		cout <<"exported pbf file to " << pbfname  << endl; 
 	}
 	
 	/** write bounding box to .bbox file **/
@@ -195,9 +301,10 @@ protected:
 				vp.time = t;
 				vp.id =string( xVehicle.getAttribute("id"));
 				vp.type = string(xVehicle.getAttribute("type"));
+				vp.lane = string(xVehicle.getAttribute("lane"));
 				vp.x = atof(xVehicle.getAttribute("x"));
 				vp.y = atof(xVehicle.getAttribute("y"));
-
+				vp.keep = true;
 				if (vp.x>=0 && vp.y >=0){
 					Vector2d latlon = this->UTM2LatLon(vp.x, vp.y);
 					vp.lat = latlon[0];
@@ -254,11 +361,11 @@ protected:
 
 void usage(){
     cout <<"Usage: fcd2pbf -i fcd_file -o output_basename [-n noise_std] [-u utm_zone] [-s downsample]\n";
-	cout <<"    output will be written to <output_basename>.pbf and <output_basename>.bbox\n";
+	cout <<"  output will be written to <output_basename>.pbf and <output_basename>.bbox\n";
 	cout <<"options:\n"
-		 <<"    -n <float> noise_std   standard deviation of Guassian noise in meters. default is 0\n"
-		 <<"    -u <int>   utm_zone    time zone of the fcd input file. default is 50 (Beijing)\n"
-		 <<"    -s <int>   downsample  down-sample interval";
+		 <<"  -n <float> noise_std   standard deviation of Guassian noise in meters. default is 0\n"
+		 <<"  -u <int>   utm_zone    time zone of the fcd input file. default is 50 (Beijing)\n"
+		 <<"  -s <int>   downsample  down-sample interval. default is 1 (no downample)\n";
 		 
 }
 
@@ -277,20 +384,24 @@ int main(int argc, char** argv){
 	if (Util::CmdOptionExists(argv,argv+argc,"-u")){
 		utm_zone = atof(Util::GetCmdOption(argv,argv+argc,"-u"));
 	}
-    int downsample = 1;
+    int downsample_level = 1;
     if (Util::CmdOptionExists(argv, argv+argc,"-s")){
-        downsample = atoi(Util::GetCmdOption(argv,argv+argc,"-s"));
+        downsample_level = atoi(Util::GetCmdOption(argv,argv+argc,"-s"));
     }
 
 	cout <<"Parsing "<< input_name << "..."<< endl;
-	cout <<"Nose stdev: " << noise_std<<" Sample interval: " << downsample<< endl;
+	cout <<"Nose stdev: " << noise_std<<" Sub-sample interval: " << downsample_level << endl;
 	FCDReader reader(input_name,utm_zone);
 	
 	string pbf_fname = string(output_name) + ".pbf";
 	string bbox_fname = string(output_name)+".bbox";
+	string lane_fname = string(output_name)+".lane";
 	if (noise_std >0)
 		reader.addNoise(noise_std);
-	reader.writePBF(pbf_fname.c_str(),downsample);
+	if (downsample_level >1)
+		reader.downSample(downsample_level);
+	reader.writePBF(pbf_fname.c_str());
+	reader.writeLane(lane_fname.c_str());
 	reader.writeBoundingBox(bbox_fname.c_str());
 }
 
