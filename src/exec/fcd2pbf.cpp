@@ -21,7 +21,11 @@
  
 using namespace std;
 using namespace GeographicLib;
-
+struct Vec2d{
+	double x;
+	double y;
+};
+		
 
 /**
  * datastructure to represent a point in the fcd trace
@@ -86,6 +90,9 @@ public:
 			}
 		}
 	}
+	/** add guassian + offset noise to trajectory data **/
+	void addOffset(double r){
+	}
 	/** downsample trajectories **/
 	void downSample(int level){
 
@@ -114,7 +121,35 @@ public:
 		size_t dot = carId.find(".");
 		return stoi(carId.substr(0,dot));
 	}
+	/**
+	 * estimate heading direction by position
+	 */
+	void estimateHeading(){
+		int nNoSpeed = 0;
+		int nNoHeading = 0;
+		int nNoSpeedHeading = 0;
+		float maxSpeed = 0; float minSpeed = 100;
 
+		for (map<string,vector<VehiclePoint> >::iterator it=trajectories.begin();
+			 it != trajectories.end(); it++){
+			/*
+			Vec2d prev{0,0};
+			vector<VehiclePoint> &vpts = it->second;
+			for (size_t i = 0; i<vpts.size()-1;++i){
+				
+				if (vpts[i].speed == 0){
+					nNoSpeed ++;
+				}
+				Vec2d curr{vpts[i].x,vpts[i].y};
+				if (prev!= curr)
+					prev = curr;
+				else
+					continue;
+			}
+			*/
+		}
+		cout <<"number of points with 0 speed " << nNoSpeed;
+	}
 	/**
 	 * write trajectories to pbf format
 	 * @deprecated!
