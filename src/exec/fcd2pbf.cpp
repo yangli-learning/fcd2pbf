@@ -18,7 +18,10 @@
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <GeographicLib/GeoCoords.hpp>
 #include "../xmlparser/xmlParser.h"
- 
+
+#define _USE_MATH_DEFINES
+#include <math.h>
+
 using namespace std;
 using namespace GeographicLib;
 struct Vec2d{
@@ -59,6 +62,7 @@ public:
 		utm_zone = utm;
 		retrieveXMLMainNode(fname);
 		parse();
+		estimateHeading();
 		//	print();
 	}
 	/** add zero-mean guassian noise to trajectory data**/
@@ -92,6 +96,34 @@ public:
 	}
 	/** add guassian + offset noise to trajectory data **/
 	void addOffset(double r){
+		//get random angle between 0 and 360
+		for (map<string,vector<VehiclePoint> >::iterator it=trajectories.begin();
+			 it != trajectories.end(); it++){
+
+			vector<VehiclePoint> &vpts = it->second;
+			
+			double angle = (rand()% 360)*M_PI/180 ;
+			Vec2d v{ cos(angle)*r,sin(angle)*r};
+
+			
+			for (unsigned i=0; i< vpts.size();++i){
+				double xNew =  vpts[i].x + v.x,
+					yNew =   vpts[i].y + v.y;
+				if (xNew <= 1e6 && xNew >= 0)
+					vpts[i].x = xNew;
+				else
+					continue;
+				if (yNew <= 1e6 && yNew >= 0)
+					vpts[i].y = yNew;
+				else
+					continue;
+
+				Vector2d latlon = UTM2LatLon( 	vpts[i].x , vpts[i].y);
+				vpts[i].lon = latlon[1];
+				vpts[i].lat = latlon[0];
+			}
+		}
+		
 	}
 	/** downsample trajectories **/
 	void downSample(int level){
@@ -122,33 +154,61 @@ public:
 		return stoi(carId.substr(0,dot));
 	}
 	/**
+	 * compute angle of vector v from north in degrees
+	 * measured clockwise
+	 */
+	double angleFromNorth(Vec2d v){
+		double r = sqrt(v.x*v.x+ v.y*v.y);
+		if (r==0){
+			cout <<"Error: heading vector is invalid";
+			return 0.f;
+		}
+
+		double angle = acos(v.y/r)*180/M_PI;
+		
+		if (v.x < 0){ // angle 0-180
+			angle = 360-angle; 
+		}
+		return angle;
+	}
+	/**
 	 * estimate heading direction by position
+	 * find 
 	 */
 	void estimateHeading(){
-		int nNoSpeed = 0;
-		int nNoHeading = 0;
-		int nNoSpeedHeading = 0;
-		float maxSpeed = 0; float minSpeed = 100;
+		//int nNoSpeed = 0;
+		//int nNoHeading = 0;
+		//int nNoSpeedHeading = 0;
+		//float maxSpeed = 0; float minSpeed = 100;
 
 		for (map<string,vector<VehiclePoint> >::iterator it=trajectories.begin();
 			 it != trajectories.end(); it++){
-			/*
-			Vec2d prev{0,0};
+			int u =0;
 			vector<VehiclePoint> &vpts = it->second;
+			std::vector<float> headings;
+			std::vector<int> hmap(vpts.size());
+
+			Vec2d curr{vpts[0].x, vpts[0].y};
 			for (size_t i = 0; i<vpts.size()-1;++i){
 				
-				if (vpts[i].speed == 0){
-					nNoSpeed ++;
+				Vec2d next{vpts[i+1].x,vpts[i+1].y};
+				hmap[i] = u;
+				if (next.x!= curr.x || next.y != curr.y){
+					// compute heading angle of curr-prev,
+					Vec2d v{next.x-curr.x,next.y-curr.y};
+					headings.push_back(angleFromNorth(v));
+					u++;
 				}
-				Vec2d curr{vpts[i].x,vpts[i].y};
-				if (prev!= curr)
-					prev = curr;
-				else
-					continue;
+				curr = next;
 			}
-			*/
+			hmap[vpts.size()-1] = hmap[vpts.size()-2];
+			
+			for (size_t i = 0; i<vpts.size();++i){
+				vpts[i].angle = headings[hmap[i]];
+			}
+			
 		}
-		cout <<"number of points with 0 speed " << nNoSpeed;
+
 	}
 	/**
 	 * write trajectories to pbf format
@@ -234,7 +294,7 @@ public:
 	/** 
 	 * write trajectories to pbf format
 	 */
-	void writePBF(const char* pbfname ){
+	void writePBF(const char* pbfname,bool convertHeading=false ){
 		GOOGLE_PROTOBUF_VERIFY_VERSION;
 		int fid = open(pbfname,O_WRONLY |O_CREAT |O_TRUNC );
 		if (fid == -1){
@@ -258,7 +318,11 @@ public:
 					TrajPoint* new_pt = new_traj.add_point(); 
 					new_pt->set_car_id(i);			
 					new_pt->set_speed(round(vpts[i].speed *100));// speed unit is cm/sec
-					new_pt->set_head(-round(vpts[i].angle) +180);//clockwise from north
+					if (convertHeading){
+					    new_pt->set_head(-round(vpts[i].angle) +180);//clockwise from north
+					}else{
+						new_pt->set_head(vpts[i].angle);
+					}
 					new_pt->set_lon((int32_t)round(vpts[i].lon*1e5));
 					new_pt->set_lat((int32_t)round(vpts[i].lat*1e5));
 					new_pt->set_x(vpts[i].x);
@@ -426,13 +490,22 @@ int main(int argc, char** argv){
 
 	cout <<"Parsing "<< input_name << "..."<< endl;
 	cout <<"Nose stdev: " << noise_std<<" Sub-sample interval: " << downsample_level << endl;
+	srand(42);
 	FCDReader reader(input_name,utm_zone);
 	
 	string pbf_fname = string(output_name) + ".pbf";
 	string bbox_fname = string(output_name)+".bbox";
 	string lane_fname = string(output_name)+".lane";
-	if (noise_std >0)
-		reader.addNoise(noise_std);
+	if (noise_std >0){
+		if (Util::CmdOptionExists(argv, argv+argc,"--offset")){
+			cout << "Add random offset of length " << noise_std << endl;
+			reader.addNoise(3.f);
+			reader.addOffset(noise_std);
+		}else{
+			cout << "Add guassian noise of stdev " << noise_std << endl;
+			reader.addNoise(noise_std);
+		}
+	}
 	if (downsample_level >1)
 		reader.downSample(downsample_level);
 	reader.writePBF(pbf_fname.c_str());
